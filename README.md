@@ -15,7 +15,7 @@ Moving-average trend-following usually earns less than buy-and-hold but loses le
 
 ## Status
 - [x] Analysis plan written and pre-registered
-- [x] Validation tests (5 of 6 done; the flat-price test waits for the SMA rule code)
+- [x] Validation tests (all 6 done) and trend rules for families 1-5 (`src/rules.py`)
 - [x] Backtest engine (`src/engine.py`)
 - [x] Data download (raw files in `data/raw/2026-09-28/`)
 - [x] Data loader and SQL data checks (`src/data.py`, `sql/data_checks.sql`)
@@ -31,6 +31,14 @@ Choices made while writing the code, for places the plan does not spell out. Non
 - **Sample end.** The downloaded files (CRSP 202608 vintage) run through 2026-08-31. The loader cuts everything at 2025-12-31, as the plan's sample says.
 - **Missing days inside an industry's history.** Eight industries have missing days after they first appear, all between 1927 and 1945 (Rubber has one 303-day gap in 1943-44; most others are single days). The plan says missing values are treated as missing. The loader takes that literally: an industry is inactive on a missing day, and the 273-day history count is the number of valid returns before the day, so a gap does not reset it. In the total-return index a missing day leaves the index unchanged.
 - **Extreme early returns.** The raw data has daily moves over 40% in thin early-period industries (39 days between 1926 and 1949, for example Paper +150% on 1932-08-11). They are kept as they are in the source. The plan has no winsorizing step, so none is applied.
+
+Rule code for families 1-5 (`src/rules.py`), logged 2026-09-29. No strategy result on the industry data had been computed. None of these changes a grid, a parameter or a hypothesis.
+
+- **Ties.** Every entry test is a strict ">" and every exit test a strict "<", so a tie means not long.
+- **Family 4 lookback.** "L months" is L x 21 trading days, the plan's definition of a month, measured at month-end. The T-bill return is compounded over the same days.
+- **Family 2.** Averages the last N month-end index values, including the current one.
+- **Start of a band or channel rule.** On its first valid day it is in cash, unless its entry condition is already true.
+- **Family 5.** The data has closes only, so "prior N-day high/low" is the highest/lowest close of the N days before today.
 
 Run the data checks with `python -m src.validate_data data/raw/2026-09-28`.
 
