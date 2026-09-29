@@ -40,6 +40,18 @@ Rule code for families 1-5 (`src/rules.py`), logged 2026-09-29. No strategy resu
 - **Start of a band or channel rule.** On its first valid day it is in cash, unless its entry condition is already true.
 - **Family 5.** The data has closes only, so "prior N-day high/low" is the highest/lowest close of the N days before today.
 
+Power-analysis code (`src/power.py`, `src/power_run.py`), logged 2026-09-29, before any real-data power run. It builds the plan's steps and adds no test, hypothesis or parameter. Only the equal-weighted industry buy-and-hold index and the T-bill rate are read from the real data; the 50/200 rule runs on synthetic paths only.
+
+- **Months.** A month is 21 trading days (the plan's definition), so synthetic paths need no calendar. A partial last month is dropped.
+- **Path length.** A synthetic path is 200 days longer than the period, because the 50/200 rule needs 200 days before its first signal. The evaluation window has exactly the period's length.
+- **Calibration path.** One path 100 times the period's length (plus the 200 days), reused for all five Deltas, giving 45 calibrations. Such a path would overflow a float price index, so the signal is computed in overlapping segments, each rebased to 1.0. The rule only compares averages of the index, so rebasing changes nothing, and a test checks that segmented and whole-path signals are identical.
+- **Calibration error.** The long path is finite, so the population Delta-CE the shift reaches carries sampling error. It is reported per cell as `calibration_se_pct`.
+- **Test.** Two-sided, alpha = 0.05, normal critical value 1.96, Newey-West lag floor(4 (M/100)^(2/9)) with M months. The bootstrap version is a studentized stationary block bootstrap with 10,000 draws on the monthly utility differences, block length from the Politis-White rule on those differences, two-sided p = (1 + number of draws with |t*| >= |t|) / (draws + 1). The spot-check uses the first 50 paths of each cell.
+- **Bootstrap code.** The stationary bootstrap is written in `src/power.py` (vectorized) because the bootstrap test needs 10,000 draws per run and the calibration path is longer than the data. `arch` supplies the block lengths, and a test checks the bootstrap against arch's `StationaryBootstrap`.
+- **Seeds.** Every cell has a fixed seed derived from 20260929, so the run reproduces exactly. The run resumes if interrupted.
+
+Run the power analysis with `python -m src.power_run data/raw/2026-09-28 results/power`.
+
 Run the data checks with `python -m src.validate_data data/raw/2026-09-28`.
 
 ## Deviations from the plan
