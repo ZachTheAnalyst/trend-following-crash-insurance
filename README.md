@@ -79,5 +79,26 @@ The SD gap is inside the tolerance. The CAGR gap is 0.53 points against a limit 
 
 **What the paper will do:** report the check as not met, with the table above, in Appendix B. No replacement criterion is adopted.
 
+### 2026-09-29: Evaluation start date moved from 1927-05-31 to 1927-06-30
+**Plan:** evaluation starts on "the first day every rule in the catalog has a valid signal", and the plan says 273 trading days of history covers the longest rule.
+
+**Found:** the two statements disagree on the real calendar. In 1926-27 markets traded six days a week, about 25 trading days a month, so 273 trading days is only about 10.5 calendar months. Family 2 with N = 12 needs 12 month-end prices, and its first valid signal is 1927-06-30 (trading day 298). The 273-day rule gives 1927-05-31. Every other rule of families 1-5 is valid by then. This was measured on a flat price series over the real trading dates, so no strategy return was computed.
+
+**Decision (Zach, 2026-09-29):** follow the plan's literal sentence. Evaluation starts on the later of the two dates, 1927-06-30, so every rule has a valid signal on day one. `rules.evaluation_start` computes it and `python -m src.validate_data data/raw/2026-09-28` reports it. The 273-day rule still decides when each industry enters the portfolios. Families 6-8 need at most 273 trading days, so they do not change the date.
+
+**Not changed:** the rules, the grids, the tolerances and every hypothesis. The 1929 requirement (check 3) still holds: 1927-06-30 is before 1929-09-01. No strategy result had been computed when this was logged.
+
+### 2026-09-29: Power-analysis clarifications (not a change to the plan)
+The plan's power analysis leaves four details open. They are fixed here, before any power-analysis code has been written or run. None touches a locked item (primary test, rule catalog, sample splits, costs, crash definition, verdict thresholds, alpha).
+
+| Date | Change | Reason |
+|---|---|---|
+| 2026-09-29 | (1) The effect size Delta is applied as a fixed additive daily return shift, found with a numerical root-finder so the synthetic strategy's population Delta-CE equals the target. | The plan says "constant shift" without saying how. An additive shift adds return without changing volatility. CRRA CE is not linear, so the shift cannot be computed in closed form. |
+| 2026-09-29 | (2) The pre-1993 and post-1992 MDEs use paths resampled only from that period's own buy-and-hold returns (1926-1992, 1993-2025) with the matching T-bill rates, each at that period's length. The full-sample MDE uses the whole sample. | Cutting one full-sample path in two would give both halves the same mix of history. Only buy-and-hold returns are used, so no real strategy return is computed. |
+| 2026-09-29 | (3) The shift is calibrated separately for every block setting x period x Delta (3 x 3 x 5 = 45 calibrations), each on one path 100 times the length of that period. | Block length changes how trendy the paths are and the period changes their volatility, so both move the strategy's baseline Delta-CE. |
+| 2026-09-29 | (4) Block length comes from `arch.bootstrap.optimal_block_length` (the "stationary" column, which includes the Patton-Politis-White correction), computed on the daily buy-and-hold returns. Returns and T-bill rates are resampled together so each day's pair stays matched. The fixed settings are 252 and 1,260 days. | The plan names the method (Politis-White with the 2009 correction) but not an implementation. |
+
+The 50/200 rule needs 200 days of warm-up on each synthetic path, so the evaluation window of each path starts after the warm-up.
+
 ## License
 Code: MIT. Analysis plan: CC-BY 4.0.

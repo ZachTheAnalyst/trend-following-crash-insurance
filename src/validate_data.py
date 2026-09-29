@@ -14,7 +14,7 @@ from pathlib import Path
 import duckdb
 import pandas as pd
 
-from src import data
+from src import data, rules
 
 SQL_FILE = Path(__file__).resolve().parent.parent / "sql" / "data_checks.sql"
 
@@ -90,6 +90,14 @@ def run(raw_dir):
             with pd.option_context("display.width", 120, "display.max_rows", 60):
                 print(df.to_string(index=False))
         print()
+    ind = data.load_industry(Path(raw_dir) / FILES["industry"], "vw")
+    first_273 = data.first_evaluation_date(ind)
+    start = rules.evaluation_start(ind.index, first_273)
+    ok = start < pd.Timestamp("1929-09-01")
+    failures += 0 if ok else 1
+    print(f"[{'PASS' if ok else 'FAIL'}] evaluation_start_is_before_1929_09_01")
+    print(f"  273-day date {first_273.date()}, every-rule-valid date {rules.first_day_all_rules_valid(ind.index).date()}, evaluation start {start.date()}")
+    print()
     print(f"{failures} check(s) failed." if failures else "All checks passed.")
     return failures
 

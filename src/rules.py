@@ -128,3 +128,50 @@ def family5_breakout(level, N, band=0.0):
     enter = level > high * (1.0 + band)
     exit_ = level < low * (1.0 - band)
     return _hold_between_bands(enter, exit_, valid)
+
+
+def catalog_families_1_to_5():
+    """The locked grid of families 1-5 as (name, function(level, rf)). 76 rules."""
+    import itertools
+
+    out = []
+    for short, long, band in itertools.product([1, 5, 10, 20, 50], [50, 100, 150, 200, 250], [0.0, 0.01]):
+        if short < long:
+            out.append((f"f1 {short}/{long} b{band}", lambda x, rf, s=short, l=long, b=band: family1_sma(x, s, l, b)))
+    for n in (6, 8, 10, 12):
+        out.append((f"f2 N{n}", lambda x, rf, n=n: family2_price_vs_monthly_sma(x, n)))
+    for s, l in itertools.product([10, 20, 50], [100, 150, 200]):
+        out.append((f"f3 {s}/{l}", lambda x, rf, s=s, l=l: family3_ema(x, s, l)))
+    for L in (1, 3, 6, 9, 12):
+        out.append((f"f4 L{L}", lambda x, rf, L=L: family4_tsmom(x, rf, L)))
+    for n, band in itertools.product([50, 100, 150, 200, 250], [0.0, 0.01]):
+        out.append((f"f5 N{n} b{band}", lambda x, rf, n=n, b=band: family5_breakout(x, n, b)))
+    return out
+
+
+def first_day_all_rules_valid(index):
+    """First date on which every rule of families 1-5 has a valid signal.
+
+    Depends only on the trading calendar, not on prices, so it is computed on a
+    flat price series: no return of any strategy is used. Families 6-8 need at
+    most 273 trading days (family 8: 12 months + the skipped month, at 21 days
+    each), which the 273-day rule already covers.
+    """
+    level = pd.Series(1.0, index=index)
+    rf = pd.Series(0.0, index=index)
+    latest = None
+    for _, rule in catalog_families_1_to_5():
+        first = rule(level, rf).first_valid_index()
+        if first is None:
+            raise ValueError("calendar is too short for the longest rule")
+        latest = first if latest is None else max(latest, first)
+    return latest
+
+
+def evaluation_start(index, first_273):
+    """Plan: evaluation starts on the first day every rule has a valid signal.
+
+    `first_273` is the first day an industry has 273 days of history
+    (data.first_evaluation_date). The evaluation start is the later of the two.
+    """
+    return max(first_273, first_day_all_rules_valid(index))

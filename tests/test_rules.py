@@ -181,3 +181,29 @@ def test_short_window_must_be_below_long_window():
         family1_sma(level, 50, 50)
     with pytest.raises(ValueError):
         family3_ema(level, 100, 50)
+
+
+# --- evaluation start ---------------------------------------------------------
+
+def test_catalog_helper_matches_the_test_catalog():
+    from src.rules import catalog_families_1_to_5
+
+    assert len(catalog_families_1_to_5()) == 76 == len(CATALOG)
+
+
+def test_first_day_all_rules_valid_is_set_by_the_slowest_rule():
+    from src.rules import first_day_all_rules_valid
+
+    # Business days from 2000-01-03. Family 1/5 with 250 days and family 4 with
+    # 12 x 21 days are valid by about day 250. Family 2 with N = 12 needs 12
+    # month-ends: the 12th is the last business day of 2000-12, which is later.
+    idx = pd.bdate_range("2000-01-03", periods=600)
+    assert first_day_all_rules_valid(idx) == pd.Timestamp("2000-12-29")
+
+
+def test_evaluation_start_is_the_later_of_the_two_dates():
+    from src.rules import evaluation_start
+
+    idx = pd.bdate_range("2000-01-03", periods=600)
+    assert evaluation_start(idx, pd.Timestamp("2000-06-01")) == pd.Timestamp("2000-12-29")
+    assert evaluation_start(idx, pd.Timestamp("2001-03-01")) == pd.Timestamp("2001-03-01")
