@@ -324,27 +324,45 @@ def path_test(net, bh, shift):
     return delta_ce(R_s, R_b), t, d
 
 
+def check_calibration(r, rf, mean_block, shifts, rng, factor=LONG_FACTOR):
+    """Delta-CE the calibrated shifts actually give on an INDEPENDENT long path.
+
+    On the calibration path itself the shift hits its target by construction, so
+    an independent path (fresh draws, same length) is what shows the calibration
+    error in numbers. Returns {target: achieved Delta-CE in percent per year}.
+    """
+    net, bh = simulate_strategy(r, rf, factor * len(r), mean_block, rng)
+    R_b = monthly(bh)
+    return {t: delta_ce(monthly(net + shift), R_b) for t, shift in shifts.items()}
+
+
 def power_cell(r, rf, mean_block, shift, seed_seq, n_paths=N_PATHS, n_spot=N_SPOT, n_boot=N_BOOT):
     """Rejection rates for one (period, block setting, Delta) cell.
 
     r, rf   the period's real buy-and-hold returns and T-bill rates (arrays)
     shift   the calibrated daily shift for this cell
-    Returns the share of paths rejected by the Newey-West test, and the share of
-    the first `n_spot` paths rejected by the full bootstrap test.
+    Returns the share of paths rejected by the Newey-West test (both tails, and
+    each tail alone), the mean and SD of the t statistic, the share of the first
+    `n_spot` paths rejected by the full bootstrap test, and the mean and SD of the
+    estimated Delta-CE across paths.
     """
     rng = np.random.default_rng(seed_seq)
-    rej_nw = 0
     rej_boot = 0
-    est = []
+    est, ts = [], []
     for i in range(n_paths):
         net, bh = simulate_strategy(r, rf, len(r), mean_block, rng)
         dce, t, d = path_test(net, bh, shift)
         est.append(dce)
-        rej_nw += abs(t) > Z_CRIT
+        ts.append(t)
         if i < n_spot:
             rej_boot += studentized_bootstrap_p(d, rng, n_boot) < ALPHA
+    ts = np.asarray(ts)
     return {
-        "rej_nw": rej_nw / n_paths,
+        "rej_nw": float(np.mean(np.abs(ts) > Z_CRIT)),
+        "rej_pos": float(np.mean(ts > Z_CRIT)),
+        "rej_neg": float(np.mean(ts < -Z_CRIT)),
+        "mean_t": float(ts.mean()),
+        "sd_t": float(ts.std(ddof=1)),
         "rej_boot": rej_boot / n_spot if n_spot else float("nan"),
         "mean_est_dce": float(np.mean(est)),
         "sd_est_dce": float(np.std(est, ddof=1)),

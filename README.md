@@ -20,7 +20,7 @@ Moving-average trend-following usually earns less than buy-and-hold but loses le
 - [x] Data download (raw files in `data/raw/2026-09-28/`)
 - [x] Data loader and SQL data checks (`src/data.py`, `sql/data_checks.sql`)
 - [x] Replication checks run (checks 1 and 2 not met, see Deviations; check 3 is covered by the SQL data checks)
-- [ ] Power analysis
+- [x] Power analysis (run 2026-09-29: no cell reaches 80% power by 2.0% per year, see Power analysis results)
 - [ ] Primary test (H1)
 - [ ] Secondary tests and robustness
 - [ ] Paper
@@ -53,6 +53,31 @@ Power-analysis code (`src/power.py`, `src/power_run.py`), logged 2026-09-29, bef
 Run the power analysis with `python -m src.power_run data/raw/2026-09-28 results/power`.
 
 Run the data checks with `python -m src.validate_data data/raw/2026-09-28`.
+
+## Power analysis results
+Run 2026-09-29 with `python -m src.power_run data/raw/2026-09-28 results/power`, from commit 62e7067, on synthetic paths resampled from the equal-weighted industry buy-and-hold index. No real strategy return was computed. Raw output: `results/power/power_cells.csv` (one row per cell), `power_mde.csv`, `power_meta.json`.
+
+Share of 500 paths in which the Newey-West version of H1 rejects at alpha = 0.05, by true Delta (percent per year of certainty-equivalent gain):
+
+| Period | Block length | Eval. days | 0.25 | 0.5 | 1.0 | 1.5 | 2.0 | SD of estimated Delta-CE (pts/yr) | MDE |
+|---|---|---|---|---|---|---|---|---|---|
+| Full | Politis-White (8.1 d) | 25,853 | 6.2% | 6.2% | 7.6% | 14.2% | 26.4% | 1.3 | > 2.0 |
+| Full | 252 d | 25,853 | 7.4% | 6.8% | 7.2% | 9.2% | 17.8% | 1.8 | > 2.0 |
+| Full | 1260 d | 25,853 | 3.6% | 2.8% | 2.6% | 3.2% | 8.6% | 1.6 | > 2.0 |
+| Pre-1993 | Politis-White (26.9 d) | 17,546 | 6.8% | 5.4% | 6.8% | 7.2% | 19.4% | 1.9 | > 2.0 |
+| Pre-1993 | 252 d | 17,546 | 9.8% | 7.8% | 5.6% | 9.4% | 11.0% | 2.3 | > 2.0 |
+| Pre-1993 | 1260 d | 17,546 | 5.0% | 4.2% | 3.6% | 1.6% | 2.8% | 1.9 | > 2.0 |
+| Post-1992 | Politis-White (3.6 d) | 8,307 | 5.6% | 5.0% | 5.2% | 7.8% | 12.2% | 2.0 | > 2.0 |
+| Post-1992 | 252 d | 8,307 | 8.8% | 9.4% | 5.8% | 3.8% | 2.8% | 3.1 | > 2.0 |
+| Post-1992 | 1260 d | 8,307 | 6.2% | 6.0% | 2.2% | 1.0% | 0.2% | 2.8 | > 2.0 |
+
+**Result:** the minimum detectable effect (80% power) is above 2.0% per year in all nine cells. The plan's grid stops at 2.0, so the plan's answer is "MDE > 2.0%", far above the 0.5% "meaningful" threshold. Under the plan's reading rule, an inconclusive H1 with MDE above 0.5% is read as "the test is too weak to decide", not as evidence of no effect.
+
+**Why:** the estimated Delta-CE varies by 1.3 to 3.1 points a year from one synthetic path to the next, so a 2-point effect is about one standard error. The rejection rates below 5% in the long-block rows come from the Newey-West test being conservative when a few crash months dominate the utility differences (the t statistic's spread is about 0.75, not 1). Some rows fall as Delta rises because at small Delta the few rejections come from the wrong-sign tail, caused by calibration error (`calibration_se_pct`: 0.14 to 0.35 points a year).
+
+**Spot-check:** the full studentized bootstrap on the first 50 paths of each cell (`rej_boot`) agrees with the Newey-West rates within the noise of 50 runs.
+
+**Exploratory, superseded:** a first look with larger effects (300 paths, unsaved) suggested 80% power arrives near 3.5-4% a year for the full sample and near 8% a year for post-1992. Those numbers are not to be cited. They are replaced by the supplementary run logged under Deviations (2026-09-29), which saves everything.
 
 ## Deviations from the plan
 Any change after registration is logged here with a date and reason.
@@ -111,6 +136,22 @@ The plan's power analysis leaves four details open. They are fixed here, before 
 | 2026-09-29 | (4) Block length comes from `arch.bootstrap.optimal_block_length` (the "stationary" column, which includes the Patton-Politis-White correction), computed on the daily buy-and-hold returns. Returns and T-bill rates are resampled together so each day's pair stays matched. The fixed settings are 252 and 1,260 days. | The plan names the method (Politis-White with the 2009 correction) but not an implementation. |
 
 The 50/200 rule needs 200 days of warm-up on each synthetic path, so the evaluation window of each path starts after the warm-up.
+
+### 2026-09-29: Supplementary power run (addition, not a change)
+**Plan:** the power analysis uses Delta = 0.25, 0.5, 1.0, 1.5, 2.0. **Registered result:** no cell reaches 80% power by 2.0, so the plan's answer is "MDE > 2.0%", see Power analysis results. That result stays as it is and remains the answer to the plan's power analysis.
+
+**Added (Zach's decision, 2026-09-29).** The grid and the rules below are locked now, before the supplementary run, and will not be adjusted after seeing its results. The code is `src/power_supp.py`.
+
+1. **Extra effect sizes.** Delta = 0 and Delta = 3, 4, 6, 8, 12 (percent per year) in all nine cells, 500 paths each. Delta = 0 shows how often the test rejects when there is no effect (the size check). If no Delta up to 12 reaches 80% in a cell, its MDE is reported as "> 12"; the grid is not extended.
+2. **More paths where the rate dipped.** Rule, fixed now: a cell is flagged if its registered rejection rate at Delta = 2.0 was below its rate at Delta = 0.25. Applying it to `results/power/power_cells.csv` flags three cells: post-1992 with 252-day blocks, post-1992 with 1,260-day blocks, and pre-1993 with 1,260-day blocks. In those cells every Delta (0, 0.25, 0.5, 1.0, 1.5, 2.0, 3, 4, 6, 8, 12) runs with 2,000 paths. If the dip disappears at 2,000 paths, it was noise. The MDE for a flagged cell uses its 2,000-path rows; for other cells it uses the registered 500-path rows plus the supplementary rows.
+3. **Calibration check with numbers.** For every target, the Delta-CE the calibrated shift gives on an independent long path (fresh draws, same length) is saved next to the target, together with the calibration standard error. On the calibration path itself the shift hits the target by construction, so an independent path is what shows the error.
+4. **Extra outputs.** Rejections in each tail, and the mean and SD of the t statistic. They show whether the test is conservative (SD below 1) or the rejections come from the wrong-sign tail.
+5. **The unsaved exploratory runs are replaced** by this run, so the paper never cites a number that was not saved.
+6. **Seeds** are fresh, so nothing repeats the registered run's draws. Spot-checks (50 paths per cell, 10,000 bootstrap draws) run as before.
+
+**Not changed:** H1, its metric (CRRA Delta-CE, gamma = 5), the verdict thresholds, the rule catalog, the splits, costs, alpha, and the registered power result. H1 is not replaced by a Sharpe test or a lower gamma because it looks weak; those are already secondary tests. The supplementary run finishes before H1 runs on real data.
+
+**How it will be reported:** in Appendix A next to the registered result, labeled supplementary. Run with `python -m src.power_supp data/raw/2026-09-28 results/power results/power_supp`.
 
 ## License
 Code: MIT. Analysis plan: CC-BY 4.0.

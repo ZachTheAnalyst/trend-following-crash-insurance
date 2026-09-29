@@ -269,3 +269,103 @@ def test_period_slices_split_at_1993_with_no_overlap_or_gap():
     pre, post = power.period_slice(inputs, "pre1993"), power.period_slice(inputs, "post1992")
     assert pre.index[-1] < pd.Timestamp("1993-01-01") <= post.index[0]
     assert len(pre) + len(post) == len(inputs)
+
+
+# --- supplementary run ---------------------------------------------------------------------------
+
+def test_power_cell_reports_each_tail_and_the_spread_of_t():
+    rng = np.random.default_rng(18)
+    r = rng.normal(0.0004, 0.01, 4000)
+    rf = np.full(4000, 0.0001)
+    out = power.power_cell(r, rf, 10.0, 0.0002, np.random.SeedSequence(19), n_paths=60, n_spot=2, n_boot=99)
+    assert out["rej_nw"] == pytest.approx(out["rej_pos"] + out["rej_neg"])
+    assert out["sd_t"] > 0 and np.isfinite(out["mean_t"])
+
+
+def test_independent_path_check_is_close_to_target_but_not_identical():
+    rng = np.random.default_rng(20)
+    r = rng.normal(0.0004, 0.01, 5000)
+    rf = np.full(5000, 0.0001)
+    shifts, _, cal_se = power.calibrate_cell(r, rf, 10.0, (0.0, 6.0), np.random.default_rng(21), factor=60)
+    achieved = power.check_calibration(r, rf, 10.0, shifts, np.random.default_rng(22), factor=60)
+    for target in (0.0, 6.0):
+        assert achieved[target] != target  # a different path, so not exact
+        assert abs(achieved[target] - target) < 5 * cal_se[target]
+
+
+def _registered(dips):
+    rows = []
+    for period in power.PERIODS:
+        for setting in ("pw", "252", "1260"):
+            for delta, rej in zip(power.DELTAS, (0.06, 0.06, 0.07, 0.08, 0.09)):
+                if (period, setting) in dips and delta == 2.0:
+                    rej = 0.01  # lower at 2.0 than at 0.25
+                rows.append({"period": period, "block_setting": setting, "delta_pct": delta, "rej_nw": rej})
+    return pd.DataFrame(rows)
+
+
+def test_flagged_cells_are_those_where_the_rate_at_2_is_below_the_rate_at_0_25():
+    from src import power_supp
+
+    dips = {("post1992", "252"), ("pre1993", "1260")}
+    assert set(power_supp.flagged_from_registered(_registered(dips))) == dips
+    assert power_supp.flagged_from_registered(_registered(set())) == ()
+    # the grid is the locked one
+    assert power_supp.SUPP_DELTAS == (0.0, 3.0, 4.0, 6.0, 8.0, 12.0)
+    assert power_supp.FLAGGED_DELTAS == (0.0, 0.25, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0)
+    assert power_supp.N_PATHS_FLAGGED == 2000
+
+
+def test_combined_mde_uses_the_right_rows_and_reports_none_when_never_reached():
+    from src import power_supp
+
+    reg = _registered(set())
+    sup = pd.DataFrame(
+        [
+            # not flagged: registered 0.25-2.0 (all low) + supplementary 3-12
+            {"period": "full", "block_setting": "pw", "delta_pct": d, "rej_nw": v}
+            for d, v in zip((0.0, 3.0, 4.0, 6.0, 8.0, 12.0), (0.05, 0.6, 0.85, 0.99, 1.0, 1.0))
+        ]
+        + [
+            # flagged: only its own 2,000-path rows count; Delta = 0 never counts
+            {"period": "post1992", "block_setting": "252", "delta_pct": d, "rej_nw": v}
+            for d, v in zip((0.0, 3.0, 12.0), (0.95, 0.5, 0.9))
+        ]
+        + [
+            {"period": "pre1993", "block_setting": "pw", "delta_pct": d, "rej_nw": v}
+            for d, v in zip((0.0, 3.0, 12.0), (0.05, 0.2, 0.4))
+        ]
+    )
+    t = power_supp.combined_mde(reg, sup, flagged=(("post1992", "252"),)).set_index(["period", "block_setting"])
+    assert t.loc[("full", "pw"), "mde_pct"] == 4.0
+    assert t.loc[("post1992", "252"), "mde_pct"] == 12.0  # not 0, even though rate at 0 is 0.95
+    assert t.loc[("pre1993", "pw"), "mde_pct"] is None or pd.isna(t.loc[("pre1993", "pw"), "mde_pct"])
+    assert t.loc[("post1992", "252"), "paths_used"] == 2000
+    assert t.loc[("full", "pw"), "paths_used"] == 500
+
+
+def test_supplementary_run_grid_paths_columns_and_resume(tmp_path, monkeypatch):
+    from src import power_supp
+
+    inputs = _tiny_inputs()
+    dips = {("post1992", "252"), ("post1992", "1260"), ("pre1993", "1260")}
+    reg = _registered(dips)
+    cells, table = power_supp.run(
+        inputs, reg, tmp_path, n_paths=4, n_paths_flagged=6, n_spot=2, n_boot=99, factor=3,
+        workers=1, log=lambda *_: None,
+    )
+    cells = cells.assign(block_setting=cells["block_setting"].astype(str))
+    per_cell = cells.groupby(["period", "block_setting"]).size()
+    assert all(per_cell[(p, s)] == 11 for p, s in dips)  # flagged cells run all 11 Deltas
+    assert (per_cell == 6).sum() == 6  # the other six run the 6 supplementary Deltas
+    assert set(cells["n_paths"]) == {4, 6}
+    assert cells["independent_path_dce_pct"].notna().all()
+    assert {"rej_pos", "rej_neg", "mean_t", "sd_t"} <= set(cells.columns)
+    assert (tmp_path / "power_supp_mde.csv").exists() and len(table) == 9
+
+    monkeypatch.setattr(power_supp, "_task", lambda *a: (_ for _ in ()).throw(AssertionError("no recompute")))
+    cells2, _ = power_supp.run(
+        inputs, reg, tmp_path, n_paths=4, n_paths_flagged=6, n_spot=2, n_boot=99, factor=3,
+        workers=1, log=lambda *_: None,
+    )
+    assert len(cells2) == len(cells)

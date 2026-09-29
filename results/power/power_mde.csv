@@ -1,0 +1,10 @@
+period,block_setting,mean_block_days,mde_nw_pct,mde_boot_spotcheck_pct
+full,pw,8.106887133485747,,
+full,252,252.0,,
+full,1260,1260.0,,
+pre1993,pw,26.90688310274644,,
+pre1993,252,252.0,,
+pre1993,1260,1260.0,,
+post1992,pw,3.5929950664652477,,
+post1992,252,252.0,,
+post1992,1260,1260.0,,
