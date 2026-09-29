@@ -19,7 +19,7 @@ Moving-average trend-following usually earns less than buy-and-hold but loses le
 - [x] Backtest engine (`src/engine.py`)
 - [x] Data download (raw files in `data/raw/2026-09-28/`)
 - [x] Data loader and SQL data checks (`src/data.py`, `sql/data_checks.sql`)
-- [ ] Replication checks (check 1 not met, see Deviations; the Faber check is still to do)
+- [x] Replication checks run (checks 1 and 2 not met, see Deviations; check 3 is covered by the SQL data checks)
 - [ ] Power analysis
 - [ ] Primary test (H1)
 - [ ] Secondary tests and robustness
@@ -47,6 +47,27 @@ Any change after registration is logged here with a date and reason.
 **Why the loader is not the cause:** French's annual file equals his own monthly file compounded to within 0.06 points (all 4,611 industry-years within 0.1 point). The gap is between the daily and the monthly files: 98.5% of industry-months are within 0.1 point, and the misses are the small, volatile industries.
 
 **Likely cause (not confirmed):** the daily portfolios are re-weighted every day, while the monthly portfolios keep their start-of-month weights. Compounded daily returns from a daily-rebalanced portfolio need not equal the monthly return.
+
+**What the paper will do:** report the check as not met, with the table above, in Appendix B. No replacement criterion is adopted.
+
+### 2026-09-29: Replication check 2 (Faber) not met, by 0.03 points
+**Plan:** the 10-month SMA rule on the market, 1972-2005, reproduces Faber's timing-minus-buy-and-hold differences (-0.06 points of CAGR, -3.47 points of standard deviation) to within 0.5 percentage points each. Faber's numbers were checked against Exhibit 9 of the published 2007 paper (S&P 500 11.24% / 17.47%, timing 11.18% / 14.00%) before the run. They match the plan.
+
+**Result** (French market return Mkt-RF + RF and French T-bill rate, daily data compounded to months, 408 months):
+
+| | CAGR % | SD % |
+|---|---|---|
+| Buy-and-hold | 11.15 | 15.85 |
+| 10-month SMA | 10.56 | 12.38 |
+| Difference | -0.59 | -3.46 |
+| Faber's difference | -0.06 | -3.47 |
+| Gap | 0.53 | 0.01 |
+
+The SD gap is inside the tolerance. The CAGR gap is 0.53 points against a limit of 0.5, so the criterion is not met. Reproduce with `python -m src.faber_check data/raw/2026-09-28`.
+
+**Not changed:** the tolerance, the rule, the data, the window and the sample dates. The check was run once. It feeds none of the hypotheses.
+
+**Possible causes (not tested):** Faber's series is the S&P 500, not the French market portfolio, and his cash rate is 90-day commercial paper, not the T-bill rate. Both would move the CAGR difference.
 
 **What the paper will do:** report the check as not met, with the table above, in Appendix B. No replacement criterion is adopted.
 
