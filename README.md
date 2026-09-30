@@ -21,7 +21,8 @@ Moving-average trend-following usually earns less than buy-and-hold but loses le
 - [x] Data loader and SQL data checks (`src/data.py`, `sql/data_checks.sql`)
 - [x] Replication checks run (checks 1 and 2 not met, see Deviations; check 3 is covered by the SQL data checks)
 - [x] Power analysis (run 2026-09-29: no cell reaches 80% power by 2.0% per year, see Power analysis results)
-- [ ] Primary test (H1)
+- [x] Portfolio layer and H1 code written and tested on made-up data (`src/portfolio.py`, `src/h1.py`); NOT yet run on real data
+- [ ] Primary test (H1) run on real data
 - [ ] Secondary tests and robustness
 - [ ] Paper
 
@@ -49,6 +50,19 @@ Power-analysis code (`src/power.py`, `src/power_run.py`), logged 2026-09-29, bef
 - **Test.** Two-sided, alpha = 0.05, normal critical value 1.96, Newey-West lag floor(4 (M/100)^(2/9)) with M months. The bootstrap version is a studentized stationary block bootstrap with 10,000 draws on the monthly utility differences, block length from the Politis-White rule on those differences, two-sided p = (1 + number of draws with |t*| >= |t|) / (draws + 1). The spot-check uses the first 50 paths of each cell.
 - **Bootstrap code.** The stationary bootstrap is written in `src/power.py` (vectorized) because the bootstrap test needs 10,000 draws per run and the calibration path is longer than the data. `arch` supplies the block lengths, and a test checks the bootstrap against arch's `StationaryBootstrap`.
 - **Seeds.** Every cell has a fixed seed derived from 20260929, so the run reproduces exactly. The run resumes if interrupted.
+
+Portfolio and H1 code (`src/portfolio.py`, `src/h1.py`), logged 2026-09-29, before any real strategy result was computed. Tested on made-up data only. It adds no test, hypothesis or parameter; H1 stays as registered (CRRA gamma = 5, 50/200, equal-weighted industries, 10 bp, full sample).
+
+- **First active day.** An industry's first active day is not an entry trade. The strategy holds the weight its signal gives, as the engine does with `initial_weight`. Buy-and-hold and the strategy start together.
+- **After a missing day.** The industry is not traded on the missing day. The next active day's weight change is measured against its last active weight.
+- **Signal.** The 50/200 signal is family 1 (no band) on each industry's total-return index, in which a missing day leaves the index unchanged.
+- **Months.** H1 uses calendar months of compounded daily net returns. A month the window covers only partly is dropped (in practice June 1927, since the window starts 1927-06-30). Strategy and buy-and-hold use the same months. (The power analysis used 21-day months because its paths have no calendar; the plan's 21-day month is for the engine and the rules.)
+- **Bootstrap.** Months are resampled in pairs (strategy month, buy-and-hold month) so each draw keeps them matched. Stationary bootstrap, 10,000 draws, Politis-White block length on the monthly utility differences.
+- **p-value.** Two-sided, (1 + number of draws with |t*| >= |t|) / (draws + 1), where t = mean(d) / NW standard error and t* is the same statistic on a draw, centered at mean(d).
+- **Confidence interval for Delta-CE.** Bootstrap-t. Each draw's Delta-CE gets a delta-method Newey-West standard error, t* = (Delta-CE* - Delta-CE) / se*, and the interval is [D - q(0.975) se, D - q(0.025) se]. The percentile interval is reported next to it as a check. The verdict uses the bootstrap-t interval.
+- **Verdict bins.** Worth it, meaningful: CI lower bound > 0 and Delta-CE >= 0.5. Worth it, trivial: CI lower bound > 0 and Delta-CE < 0.5. Not worth it: CI upper bound < 0. Otherwise inconclusive.
+- **Newey-West check.** Same lag rule as the power analysis, Bartlett kernel, normal p-value. Reported only as a check.
+- **Seed.** 20260929. `python -m src.h1` refuses to run without `--confirm-unblind`.
 
 Run the power analysis with `python -m src.power_run data/raw/2026-09-28 results/power`.
 
